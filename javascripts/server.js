@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 
 // =========================================================================
 // 🔒 【安全ガード】Stripe秘密鍵の自動検証と空白クリーニング処理
@@ -16,37 +17,41 @@ let stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
 if (!stripeSecretKey) {
     console.error('❌ [ERROR] STRIPE_SECRET_KEY が環境変数に設定されていません！');
-    console.error('Renderの「Environment」設定画面で正しくキーが登録されているか確認してください。');
 } else {
-    // 前後にスペースや改行が混じっていても自動で100%綺麗に消去（トリム）します
     stripeSecretKey = stripeSecretKey.trim();
     console.log('🔑 [INFO] Stripe秘密鍵を正常に検出しました。(自動クリーニング済)');
 }
 
-// 通信タイムアウト時間を適切に制限（60秒）し、接続エラーを防止する設定を追加
 const stripe = require('stripe')(stripeSecretKey, {
     timeout: 60000 // 60秒
 });
 
 const app = express();
 
-// フロントエンド（ブラウザ）からのアクセスをすべて許可
 app.use(cors({
     origin: '*'
 }));
 app.use(express.json());
 
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5500';
+// =========================================================================
+// 📁 【超堅牢パス解決】フロントエンド画面の配信制御
+// =========================================================================
+// server.js は javascripts フォルダ内にあるため、確実に1つ上のルートフォルダを絶対パスで指定します。
+const publicPath = path.resolve(__dirname, '..');
 
-// Stripe Checkout セッションを作成するAPI
+// 読み込み先パスをRenderのログに出力して、ズレがないか監視できるようにします
+console.log(`📂 [DEBUG] フロントエンド画面の配信ルートフォルダパス: ${publicPath}`);
+
+app.use(express.static(publicPath));
+
+// Stripe Checkout セッションを動的に作成するAPI（バックエンド処理）
 app.post('/create-checkout-session', async (req, res) => {
     try {
         const { cartItems, userName, pickupTime } = req.body;
 
-        // APIキーが正常に読み込めていない場合の安全ガード
         if (!stripeSecretKey) {
             return res.status(500).json({ 
-                error: 'サーバー側でStripeのAPIキー（秘密鍵）が設定されていません。Renderの設定を確認してください。' 
+                error: 'サーバー側でStripeのAPIキー（秘密鍵）が設定されていません。' 
             });
         }
 
@@ -67,12 +72,17 @@ app.post('/create-checkout-session', async (req, res) => {
             };
         });
 
+        // リクエスト元のドメインを動的に解決
+        const referer = req.headers.referer || 'http://localhost:3000/';
+        const redirectBase = referer.split('?')[0];
+
+        // Stripe APIとダイナミックに通信して決済セッションを生成
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: lineItems,
             mode: 'payment',
-            success_url: `${CLIENT_URL}/index.html?success=true&name=${encodeURIComponent(userName)}&time=${encodeURIComponent(pickupTime)}`,
-            cancel_url: `${CLIENT_URL}/index.html?cancel=true`,
+            success_url: `${redirectBase}?success=true&name=${encodeURIComponent(userName)}&time=${encodeURIComponent(pickupTime)}`,
+            cancel_url: `${redirectBase}?cancel=true`,
         });
 
         res.json({ url: session.url });
@@ -83,10 +93,25 @@ app.post('/create-checkout-session', async (req, res) => {
     }
 });
 
+// =========================================================================
+// 🌐 【Cannot GET / 対策】
+// すべてのアクセスルートに対して、動的ルーティングと画面リソースの紐付けを行います。
+// =========================================================================
+app.get('*', (req, res) => {
+    const indexPath = path.join(publicPath, 'index.html');
+    console.log(`📄 [DEBUG] リクエスト受信: フロントエンド画面を出力します (${indexPath})`);
+    res.sendFile(indexPath, (err) => {
+        if (err) {
+            console.error('❌ [ERROR] フロントエンド画面の送信に失敗しました:', err.message);
+            res.status(404).send('ハンバーガーショップ画面が見つかりません。フォルダ構成を確認してください。');
+        }
+    });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log('==================================================');
-    console.log(' NEST BURGER CRAFT - Stripe Checkout サーバー起動！');
-    console.log(` APIポート: http://localhost:${PORT}`);
+    console.log(' NEST BURGER CRAFT - 動的Web決済アプリケーションサーバー起動！');
+    console.log(` 稼働アドレス: http://localhost:${PORT}`);
     console.log('==================================================');
 });
