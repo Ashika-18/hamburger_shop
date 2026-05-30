@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ja" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BURGER CRAFT NEST | こだわりのクラフトバーガーテイクアウト</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Noto Sans JP -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    
+    <!-- 外部CSSファイルの読み込み（SEOに有利なクリーンHTML構成） -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Tailwindのカスタムカラー定義 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        nestDark: '#1e1611',
+                        nestDarker: '#120c08',
+                        nestGold: '#f2a900',
+                        nestGoldHover: '#e59400',
+                        nestBg: '#fcfbf9',
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans JP', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="relative min-h-screen overflow-x-hidden">
+
+    <!-- ヘッダー -->
+    <header class="bg-nestDark text-white sticky top-0 z-40 shadow-md">
+        <!-- 構造化：ヘッダーコンテナー -->
+        <div class="container h-20 flex items-center justify-between">
+            <!-- ロゴ -->
+            <a href="#" class="flex items-center gap-3 group">
+                <div class="w-10 h-10 bg-nestGold rounded-full flex items-center justify-center font-bold text-nestDark text-lg shadow-inner group-hover:scale-105 transition-transform">
+                    N
+                </div>
+                <div>
+                    <span class="text-xs tracking-widest text-nestGold block font-light">BURGER CRAFT</span>
+                    <span class="text-xl font-black tracking-wider block -mt-1">NEST</span>
+                </div>
+            </a>
+
+            <!-- デスクトップナビゲーション -->
+            <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
+                <a href="#about" class="hover:text-nestGold transition-colors">わたしたちのこだわり</a>
+                <a href="#menu" class="text-nestGold hover:text-white transition-colors">メニュー</a>
+                <a href="#how-to" class="hover:text-nestGold transition-colors">注文方法</a>
+                <a href="#shop-info" class="hover:text-nestGold transition-colors">店舗情報</a>
+            </nav>
+
+            <!-- アクションボタン -->
+            <div class="flex items-center gap-4">
+                <!-- カートアイコンボタン -->
+                <button onclick="toggleCart(true)" class="relative p-2.5 bg-neutral-800 text-white hover:bg-neutral-700 rounded-full transition-all focus:outline-none" aria-label="カートを開く">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-nestGold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <!-- カートバッジ -->
+                    <span id="cart-badge" class="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-xs w-5 h-5 rounded-full flex items-center justify-center scale-0 transition-transform">0</span>
+                </button>
+
+                <!-- テイクアウト予約ボタン -->
+                <button onclick="toggleCart(true)" class="bg-nestGold text-nestDark font-bold px-5 py-2.5 rounded-md hover:bg-nestGoldHover transition-colors text-sm shadow-md hidden sm:block">
+                    テイクアウト予約
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main>
+        
+        <!-- ==================== メニューセクション ==================== -->
+        <section id="menu" class="section-padding bg-nestBg">
+            <!-- コンテナー層 -->
+            <div class="container">
+                <!-- コンテンツ層 (ヘッダー部分) -->
+                <div class="section-header">
+                    <span class="text-xs uppercase tracking-widest text-nestGold font-semibold block mb-2">CRAFT MENU</span>
+                    <h2 class="text-3xl md:text-4xl font-black text-nestDark tracking-tight mb-4">こだわりのクラフトメニュー</h2>
+                    <p class="text-sm md:text-base text-gray-500 max-w-xl mx-auto">
+                        お好きな商品を選んで、右上のカートからテイクアウト予約が可能です。
+                    </p>
+                    <div class="w-16 h-1 bg-nestGold mx-auto mt-6 rounded-full"></div>
+                </div>
+
+                <!-- コンテンツ層 (カテゴリー選択タブ) -->
+                <div class="flex justify-center mb-12">
+                    <div class="bg-white p-1.5 rounded-full shadow-sm border border-neutral-100 flex gap-1 max-w-full overflow-x-auto">
+                        <button onclick="filterCategory('all')" id="tab-all" class="category-tab px-6 py-2.5 rounded-full text-sm font-bold transition-all bg-nestGold text-nestDark shadow-sm">
+                            すべて
+                        </button>
+                        <button onclick="filterCategory('burger')" id="tab-burger" class="category-tab px-6 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-nestDark transition-all">
+                            バーガー
+                        </button>
+                        <button onclick="filterCategory('side')" id="tab-side" class="category-tab px-6 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-nestDark transition-all">
+                            サイド
+                        </button>
+                        <button onclick="filterCategory('drink')" id="tab-drink" class="category-tab px-6 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-nestDark transition-all">
+                            ドリンク
+                        </button>
+                    </div>
+                </div>
+
+                <!-- コンテンツ層 (商品一覧グリッド) -->
+                <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 min-h-[400px]">
+                    <!-- JSで動的に商品カードを生成して挿入します -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== HOW TO ORDER セクション ==================== -->
+        <section id="how-to" class="section-padding bg-nestDark text-white relative overflow-hidden">
+            <div class="absolute inset-0 opacity-5 bg-[radial-gradient(#f2a900_1px,transparent_1px)] [background-size:16px_16px]"></div>
+            
+            <!-- コンテナー層 -->
+            <div class="container relative z-10">
+                <!-- コンテンツ層 (ヘッダー部分) -->
+                <div class="section-header">
+                    <span class="text-xs uppercase tracking-widest text-nestGold font-semibold block mb-2">HOW TO ORDER</span>
+                    <h2 class="text-2xl md:text-3xl font-black tracking-tight text-white">モバイルでかんたんテイクアウト予約</h2>
+                    <div class="w-12 h-1 bg-nestGold mx-auto mt-4 rounded-full"></div>
+                </div>
+
+                <!-- コンテンツ層 (3ステップグリッド) -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                    <!-- ステップ 1 -->
+                    <div class="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-8 flex flex-col items-center text-center hover:border-nestGold/30 transition-colors">
+                        <div class="w-12 h-12 bg-nestGold text-nestDark font-bold text-xl rounded-full flex items-center justify-center mb-6 shadow-md">
+                            1
+                        </div>
+                        <h3 class="text-lg font-bold mb-3 text-white">メニューを選びカートに入れる</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed">
+                            上記のメニューからお好きなものをお選びください。トッピングなどのカスタマイズも自由自在です。
+                        </p>
+                    </div>
+
+                    <!-- ステップ 2 -->
+                    <div class="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-8 flex flex-col items-center text-center hover:border-nestGold/30 transition-colors">
+                        <div class="w-12 h-12 bg-nestGold text-nestDark font-bold text-xl rounded-full flex items-center justify-center mb-6 shadow-md">
+                            2
+                        </div>
+                        <h3 class="text-lg font-bold mb-3 text-white">受取時間を指定して予約</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed">
+                            ご希望の受け取り時間を指定し、お名前、ご連絡先を入力してご注文を確定します。
+                        </p>
+                    </div>
+
+                    <!-- ステップ 3 -->
+                    <div class="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-8 flex flex-col items-center text-center hover:border-nestGold/30 transition-colors">
+                        <div class="w-12 h-12 bg-nestGold text-nestDark font-bold text-xl rounded-full flex items-center justify-center mb-6 shadow-md">
+                            3
+                        </div>
+                        <h3 class="text-lg font-bold mb-3 text-white">店舗で並ばずに受け取り</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed">
+                            お時間になりましたら店舗へお越しください。出来立て、ホカホカのハンバーガーを用意してお待ちしております。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== SHOP INFORMATION セクション ==================== -->
+        <section id="shop-info" class="section-padding bg-white">
+            <!-- コンテナー層 -->
+            <div class="container">
+                <!-- コンテンツ層 (グリッドレイアウト) -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                    <!-- 左側：紹介テキスト -->
+                    <div>
+                        <span class="text-xs uppercase tracking-widest text-nestGold font-semibold block mb-2">SHOP INFORMATION</span>
+                        <h2 class="text-3xl font-black text-nestDark tracking-tight mb-6">
+                            都会の真ん中で<br>心安らぐ居場所を
+                        </h2>
+                        <div class="space-y-4 text-gray-600 leading-relaxed mb-8 text-sm md:text-base">
+                            <p>
+                                NEST（巣・安息の地）という店名の通り、都会の喧騒から少し離れてリラックスできる、温かみのある木の空間をご用意しました。お一人でも、ご友人やご家族とでも、特別なハンバーガータイムをお過ごしいただけます。
+                            </p>
+                            <p>
+                                厳選された国産牛100%のパティ、地元のベーカリーと共同開発したオリジナルバンズ、精度を高めたBBQソース。ひとつひとつの素材にこだわり、職人が注文を受けてから丁寧に焼き上げます。
+                            </p>
+                        </div>
+
+                        <!-- 店舗詳細スペック -->
+                        <div class="grid grid-cols-2 gap-6 border-t border-gray-100 pt-8 text-xs md:text-sm">
+                            <div>
+                                <h4 class="font-bold text-nestDark mb-1">営業時間</h4>
+                                <p class="text-gray-500">11:00 〜 21:00 (L.O. 20:30)</p>
+                                <p class="text-gray-400">定休日: 水曜日</p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-nestDark mb-1">アクセス</h4>
+                                <p class="text-gray-500">東京都渋谷区神宮前 1-2-3</p>
+                                <p class="text-gray-400">渋谷駅 徒歩5分</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 右側：内観イメージ画像 -->
+                    <div class="relative h-[350px] md:h-[450px] rounded-3xl overflow-hidden shadow-2xl group">
+                        <img src="https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80" 
+                             alt="NEST店舗内観" 
+                             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                             onerror="this.src='data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22800%22%20height%3D%22600%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%232e221a%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-size%3D%2224%22%20fill%3D%22%23f2a900%22%20font-weight%3D%22bold%22%20text-anchor%3D%22middle%22%3ENEST%20BURGER%20CAFÉ%3C%2Ftext%3E%3C%2Fsvg%3E'">
+                        <div class="absolute inset-0 bg-gradient-to-t from-nestDark/80 via-transparent to-transparent flex items-end p-8">
+                            <div>
+                                <span class="text-nestGold text-xs font-bold tracking-widest uppercase block mb-1">CRAFT & RELAX</span>
+                                <p class="text-white text-lg font-bold">木のぬくもり溢れる落ち着いたカフェスペース</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- フッター -->
+    <footer class="bg-nestDarker text-gray-400 py-12 border-t border-neutral-900">
+        <!-- フッターコンテナー -->
+        <div class="container flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-nestGold text-nestDark font-bold rounded-full flex items-center justify-center">N</div>
+                <span class="text-white font-bold tracking-wider">CRAFT BURGER NEST</span>
+            </div>
+            <div class="flex gap-6 text-sm">
+                <a href="#" class="hover:text-white transition-colors">プライバシーポリシー</a>
+                <a href="#" class="hover:text-white transition-colors">特定商取引法に基づく表記</a>
+                <a href="#" class="hover:text-white transition-colors">お問い合わせ</a>
+            </div>
+            <p class="text-xs text-gray-600">
+                &copy; 2026 CRAFT BURGER NEST. All Rights Reserved.
+            </p>
+        </div>
+    </footer>
+
+    <!-- ==================== ショッピングカートドロワー (スライドイン) ==================== -->
+    <div id="cart-overlay" onclick="toggleCart(false)" class="fixed inset-0 bg-black/50 z-50 pointer-events-none opacity-0 transition-opacity duration-300"></div>
+    <div id="cart-drawer" class="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl z-50 transform translate-x-full cart-drawer flex flex-col">
+        <!-- カートヘッダー -->
+        <div class="p-6 border-b border-neutral-100 flex items-center justify-between bg-nestDark text-white">
+            <div class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-nestGold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+                <h3 class="text-lg font-bold tracking-tight">テイクアウト注文カート</h3>
+            </div>
+            <button onclick="toggleCart(false)" class="p-2 hover:bg-neutral-800 rounded-full transition-colors" aria-label="閉じる">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- カートアイテムリスト -->
+        <div id="cart-items" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <!-- JSで動的にカートアイテムが挿入されます -->
+        </div>
+
+        <!-- カートが空のときの表示 -->
+        <div id="cart-empty-state" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
+            <div class="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+            </div>
+            <p class="font-bold text-gray-700 mb-1">カートは空です</p>
+            <p class="text-xs text-gray-400 max-w-xs mb-6">
+                こだわりのクラフトバーガーやサイドメニューを追加して、出来立てを予約注文しましょう！
+            </p>
+            <button onclick="toggleCart(false)" class="bg-nestDark text-white px-6 py-2 rounded-full font-bold text-xs hover:bg-neutral-800 transition-colors">
+                メニューを見る
+            </button>
+        </div>
+
+        <!-- カートフッター / 入力フォーム -->
+        <div id="cart-footer" class="border-t border-neutral-100 bg-neutral-50 p-6 hidden">
+            <!-- 合計金額 -->
+            <div class="flex items-center justify-between mb-6">
+                <span class="text-sm font-bold text-gray-600">合計金額 (税込)</span>
+                <span id="cart-total" class="text-2xl font-black text-nestDark">¥0</span>
+            </div>
+
+            <!-- 予約注文入力フォーム -->
+            <form id="order-form" onsubmit="handleOrderSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1" for="user-name">お名前 <span class="text-red-500">*</span></label>
+                    <input type="text" id="user-name" required placeholder="山田 太郎" class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-nestGold/50 focus:border-nestGold">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1" for="user-phone">電話番号 <span class="text-red-500">*</span></label>
+                    <input type="tel" id="user-phone" required placeholder="090-1234-5678" class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-nestGold/50 focus:border-nestGold">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1" for="pickup-time">お受け取り希望時間 <span class="text-red-500">*</span></label>
+                    <select id="pickup-time" required class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-nestGold/50 focus:border-nestGold">
+                        <option value="">選択してください</option>
+                        <option value="11:30">11:30</option>
+                        <option value="12:00">12:00</option>
+                        <option value="12:30">12:30</option>
+                        <option value="13:00">13:00</option>
+                        <option value="13:30">13:30</option>
+                        <option value="14:00">14:00</option>
+                        <option value="17:30">17:30</option>
+                        <option value="18:00">18:00</option>
+                        <option value="18:30">18:30</option>
+                        <option value="19:00">19:00</option>
+                        <option value="19:30">19:30</option>
+                        <option value="20:00">20:00</option>
+                    </select>
+                </div>
+
+                <!-- お支払い方法の選択 -->
+                <div class="pt-2">
+                    <label class="block text-xs font-bold text-gray-700 mb-2">お支払い方法 <span class="text-red-500">*</span></label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="relative flex flex-col p-3 border rounded-xl cursor-pointer text-center hover:border-nestGold transition-all bg-white animate-ui" id="payment-payatstore-label">
+                            <input type="radio" name="payment-method" value="pay-at-store" checked class="sr-only" onchange="togglePaymentFields('pay-at-store')">
+                            <span class="text-xs font-bold text-gray-800">店頭レジ払い</span>
+                            <span class="text-[10px] text-gray-400 mt-1">レジで直接お支払い</span>
+                        </label>
+                        <label class="relative flex flex-col p-3 border rounded-xl cursor-pointer text-center hover:border-nestGold transition-all bg-white animate-ui" id="payment-credit-label">
+                            <input type="radio" name="payment-method" value="credit-card" class="sr-only" onchange="togglePaymentFields('credit-card')">
+                            <span class="text-xs font-bold text-gray-800">カード事前決済</span>
+                            <span class="text-[10px] text-gray-400 mt-1">WEBで安全にお支払い</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- クレジットカード入力フォームエリア (初期値は非表示) -->
+                <div id="credit-card-fields" class="hidden space-y-3 bg-neutral-100/70 p-4 rounded-2xl border border-neutral-200/50 mt-2 transition-all">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-bold text-gray-800">カード情報入力</span>
+                        <div class="flex gap-1">
+                            <span class="bg-gray-300 text-[8px] font-bold text-gray-600 px-1.5 py-0.5 rounded-sm">VISA</span>
+                            <span class="bg-gray-300 text-[8px] font-bold text-gray-600 px-1.5 py-0.5 rounded-sm">Master</span>
+                            <span class="bg-gray-300 text-[8px] font-bold text-gray-600 px-1.5 py-0.5 rounded-sm">JCB</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-500 mb-1" for="card-number">カード番号</label>
+                        <div class="relative">
+                            <input type="text" id="card-number" placeholder="1234 5678 1234 5678" maxlength="19" class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-nestGold/50 focus:border-nestGold" oninput="formatCardNumber(this)">
+                            <div class="absolute right-3 top-2.5 text-gray-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 mb-1" for="card-expiry">有効期限 (月/年)</label>
+                            <input type="text" id="card-expiry" placeholder="MM/YY" maxlength="5" class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-nestGold/50 focus:border-nestGold" oninput="formatCardExpiry(this)">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 mb-1" for="card-cvc">セキュリティコード</label>
+                            <input type="password" id="card-cvc" placeholder="CVC / CVV" maxlength="3" class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-nestGold/50 focus:border-nestGold">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-nestGold text-nestDark font-black py-3 rounded-lg hover:bg-nestGoldHover transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 mt-4">
+                    <span>この内容でテイクアウト予約する</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- ==================== 予約完了ポップアップモーダル ==================== -->
+    <div id="success-modal" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl transform scale-95 transition-transform duration-300">
+            <!-- ヘッダーデザイン -->
+            <div class="bg-nestDark p-6 text-center text-white relative">
+                <div class="w-16 h-16 bg-nestGold text-nestDark rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+                <h4 class="text-xl font-black tracking-wide">テイクアウト予約完了！</h4>
+                <p class="text-xs text-nestGold mt-1">ご予約ありがとうございます</p>
+            </div>
+
+            <!-- 予約詳細情報 -->
+            <div class="p-6 space-y-4">
+                <div class="text-center">
+                    <p class="text-xs text-gray-400">注文予約番号</p>
+                    <p id="receipt-id" class="text-lg font-black text-nestDark tracking-wider">NST-88291</p>
+                </div>
+
+                <div class="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 space-y-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400">お名前:</span>
+                        <span id="receipt-name" class="font-bold text-gray-800">山田 太郎 様</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400">受取希望店舗:</span>
+                        <span class="font-bold text-gray-800">NEST 渋谷店</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400">受取予定時間:</span>
+                        <span id="receipt-time" class="font-bold text-red-600">18:30</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400">お支払い方法:</span>
+                        <span id="receipt-payment-method" class="font-bold text-gray-800">店頭でお支払い</span>
+                    </div>
+                    <div class="border-t border-dashed border-neutral-200 my-2 pt-2 flex justify-between text-sm">
+                        <span class="font-bold text-gray-700">お支払い合計金額:</span>
+                        <span id="receipt-total" class="font-black text-nestDark text-base">¥2,340</span>
+                    </div>
+                </div>
+
+                <p id="receipt-instruction" class="text-[10px] text-gray-400 text-center leading-relaxed">
+                    ※お支払いは店舗受け取り時（現金/クレジットカード/各種QR決済）となります。お時間になりましたらカウンターまでお越しいただき、上記の予約番号をご提示ください。
+                </p>
+
+                <!-- 模擬QRコード -->
+                <div class="flex justify-center py-2">
+                    <div class="p-3 bg-white border-2 border-neutral-100 rounded-xl shadow-sm">
+                        <div class="grid grid-cols-5 gap-1 w-24 h-24">
+                            <!-- QR風ドットアート -->
+                            <div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-neutral-100"></div><div class="bg-nestDark rounded-xs"></div>
+                            <div class="bg-nestDark rounded-xs"></div><div class="bg-neutral-100"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-neutral-100"></div>
+                            <div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-neutral-100"></div><div class="bg-nestDark rounded-xs"></div>
+                            <div class="bg-neutral-100"></div><div class="bg-neutral-100"></div><div class="bg-neutral-100"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div>
+                            <div class="bg-nestDark rounded-xs"></div><div class="bg-neutral-100"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div><div class="bg-nestDark rounded-xs"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 閉じるボタン -->
+                <button onclick="closeSuccessModal()" class="w-full bg-nestDark text-white font-bold py-3 rounded-xl hover:bg-neutral-800 transition-colors">
+                    ウィンドウを閉じる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 外部スクリプトファイルの読み込み -->
+    <script src="javascripts/main.js"></script>
+</body>
+</html>

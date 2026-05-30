@@ -1,0 +1,120 @@
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background-color: #fcfbf9;
+  color: #1e1611;
+}
+
+/* ==================================================
+ 1. 共通レイアウト設計 (セクション > コンテナー > コンテンツ)
+================================================== */
+
+/* 共通コンテナー：全体の横幅を均一に制御し、中央寄せにする */
+.container {
+  width: 100%;
+  max-width: 1280px; /* Tailwindの max-w-7xl 相当 */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container {
+      padding-left: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+      padding-left: 2rem;
+  }
+}
+
+/* 各セクションごとの上下余白の統一 */
+.section-padding {
+  padding-top: 4rem;    /* py-16 */
+  padding-bottom: 4rem;
+}
+
+@media (min-width: 768px) {
+  .section-padding {
+      padding-top: 5rem; /* py-20 */
+      padding-bottom: 5rem;
+  }
+}
+
+/* セクションの見出し（タイトル・リード文）エリアの配置制御 */
+.section-header {
+  text-align: center;
+  margin-bottom: 3rem; /* mb-12 */
+}
+
+/* ==================================================
+ 2. インタラクティブコンポーネント (カード・カート・決済トグル)
+================================================== */
+
+/* 商品カード：
+ JavaScript側からインライン装飾を完全分離。
+ 背景、角丸、枠線、初期状態の影、FlexレイアウトをすべてCSS側で統一管理。
+*/
+.product-card {
+  background-color: #ffffff;
+  border-radius: 1.5rem; /* rounded-3xl */
+  overflow: hidden;
+  border: 1px solid #f3f4f6; /* border-neutral-100 */
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* shadow-sm */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ホバー時に滑らかに浮き上がり、影を深くする */
+.product-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); /* shadow-xl */
+}
+
+/* カート内追加アイテム：
+ JavaScriptでの生成時に付与されるクラス。
+ リスト内の各アイテムを美しく構造化し、整列させます。
+*/
+.cart-item {
+  display: flex;
+  gap: 1rem; /* gap-4 */
+  padding: 1rem; /* p-4 */
+  background-color: #faf9f6; /* bg-neutral-50 */
+  border-radius: 1rem; /* rounded-2xl */
+  border: 1px solid #f3f4f6; /* border-neutral-100 */
+  align-items: center; /* items-center */
+}
+
+/* カートドロワー：右側からのスライドアニメーション */
+.cart-drawer {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* UIアニメーション：お支払い方法トグルの色調変化を滑らかに */
+.animate-ui {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==================================================
+ 3. スクロールバーのカスタマイズ (ブランドカラーに同調)
+================================================== */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4af37;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b89320;
+}
