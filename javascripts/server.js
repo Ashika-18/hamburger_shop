@@ -50,7 +50,7 @@ console.log(`📂 [DEBUG] フロントエンド画面の配信ルートフォル
 app.use(express.static(publicPath));
 
 // Stripe Checkout セッションを動的に作成するAPI（バックエンド処理）
-app.post('/create-checkout-session', async (req, res) => {
+app.post('/create-checkout-session', async (req, res, next) => {
     try {
         const { cartItems, userName, pickupTime } = req.body;
 
@@ -93,8 +93,8 @@ app.post('/create-checkout-session', async (req, res) => {
         res.json({ url: session.url });
 
     } catch (error) {
-        console.error('❌ Checkout Session作成失敗:', error.message);
-        res.status(500).json({ error: 'Stripe決済の準備中にエラーが発生しました: ' + error.message });
+        // エラーハンドラーミドルウェアにエラーを安全に引き渡します
+        next(error);
     }
 });
 
@@ -118,6 +118,23 @@ app.use((req, res, next) => {
         });
     }
     next();
+});
+
+// =========================================================================
+// 🚨 【超重要：グローバル・JSONエラーハンドラーミドルウェア】
+// システムのあらゆるエラー（Stripe通信失敗など）をここで強制的にキャッチし、
+// ブラウザが解釈できる「綺麗なJSON形式」でエラー応答を100%返します。
+// これにより「Unexpected token <」エラーの発生を完全に防止します！
+// =========================================================================
+app.use((err, req, res, next) => {
+    console.error('❌ [FATAL ERROR] サーバー内部で例外が発生しました:', err.stack || err.message);
+    
+    // レスポンスのヘッダーをJSONに固定し、500エラーコードでJSONを返却します
+    res.setHeader('Content-Type', 'application/json');
+    res.status(500).json({
+        error: 'Stripe決済の処理中にエラーが発生しました。',
+        details: err.message || '内部サーバーエラー'
+    });
 });
 
 const PORT = process.env.PORT || 3000;
