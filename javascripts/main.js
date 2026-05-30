@@ -1,8 +1,12 @@
 // グローバルの多重読み込み防止フラグ
 window.NEST_APP_LOADED = true;
 
-// バックエンド API（Live Server のホスト名に合わせる）
-const API_BASE = `http://${window.location.hostname}:3000`;
+// バックエンド API
+// ローカル: Live Server(5500) + node server.js(3000) / Render: 同一オリジン
+const isLocalLiveServer = ['5500', '5501'].includes(window.location.port);
+const API_BASE = isLocalLiveServer
+    ? `http://${window.location.hostname}:3000`
+    : '';
 
 // --- 商品マスターデータ ---
 const products = [
