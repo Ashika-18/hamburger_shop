@@ -6,7 +6,7 @@ window.NEST_APP_LOADED = true;
 const isLocalLiveServer = ['5500', '5501'].includes(window.location.port);
 const API_BASE = isLocalLiveServer
     ? `http://${window.location.hostname}:3000`
-    : '';
+    : 'https://hamburger-shop.onrender.com/';
 
 // --- 商品マスターデータ ---
 const products = [
