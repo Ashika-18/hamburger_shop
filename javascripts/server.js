@@ -1,3 +1,8 @@
+// =========================================================================
+// 🌐 【DNS接続エラー完全対策】
+// Render上のNode.jsがStripeへのIPv6接続に失敗し、タイムアウトになる
+// 「既知のバグ」を完全に回避するため、名前解決を「IPv4優先」に固定します。
+// =========================================================================
 const dns = require('dns');
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
@@ -94,18 +99,25 @@ app.post('/create-checkout-session', async (req, res) => {
 });
 
 // =========================================================================
-// 🌐 【Cannot GET / 対策】
-// すべてのアクセスルートに対して、動的ルーティングと画面リソースの紐付けを行います。
+// 🌐 【Cannot GET / 回避＆将来の互換性対策ミドルウェア】
+// ルーティングエンジン（path-to-regexp）を介さない安全なフォールバック処理。
+// これにより、Expressのどのバージョンでも絶対にクラッシュせずに
+// 画面リソースの紐付けを行います。
 // =========================================================================
-app.get('*', (req, res) => {
-    const indexPath = path.join(publicPath, 'index.html');
-    console.log(`📄 [DEBUG] リクエスト受信: フロントエンド画面を出力します (${indexPath})`);
-    res.sendFile(indexPath, (err) => {
-        if (err) {
-            console.error('❌ [ERROR] フロントエンド画面の送信に失敗しました:', err.message);
-            res.status(404).send('ハンバーガーショップ画面が見つかりません。フォルダ構成を確認してください。');
-        }
-    });
+app.use((req, res, next) => {
+    // GETリクエストであり、かつ決済API（/create-checkout-session）以外のアクセスはすべて
+    // 自動的にフロントエンド画面（index.html）へ安全に流し込みます。
+    if (req.method === 'GET' && !req.path.startsWith('/create-checkout-session')) {
+        const indexPath = path.join(publicPath, 'index.html');
+        console.log(`📄 [DEBUG] フロントエンド画面を出力します (${indexPath})`);
+        return res.sendFile(indexPath, (err) => {
+            if (err) {
+                console.error('❌ [ERROR] フロントエンド画面の送信に失敗しました:', err.message);
+                res.status(404).send('ハンバーガーショップ画面が見つかりません。フォルダ構成を確認してください。');
+            }
+        });
+    }
+    next();
 });
 
 const PORT = process.env.PORT || 3000;
