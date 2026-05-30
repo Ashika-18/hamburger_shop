@@ -114,7 +114,6 @@ window.renderProducts = function() {
 
     filtered.forEach(p => {
         const card = document.createElement('div');
-        // 【改善】インラインのTailwind表記を排除し、CSS設計されたコンポーネントクラスのみを付与！
         card.className = "product-card"; 
         
         const badgeHtml = p.badge 
@@ -249,7 +248,6 @@ window.updateCart = function() {
         cartItemsContainer.innerHTML = '';
         cart.forEach(item => {
             const el = document.createElement('div');
-            // 【改善】カート内のアイテム装飾もCSS設計に完全移行！
             el.className = 'cart-item'; 
             
             el.innerHTML = `
@@ -296,62 +294,77 @@ window.updatePaymentSelectionUI = function() {
     }
 };
 
+// 【改善】Stripe Checkout（リダイレクト方式）を実装するため、自前のカード入力項目は不要になります。
+// ここではエラーを防ぐために関数だけ残しておきます。
 window.togglePaymentFields = function(method) {
-    const fields = document.getElementById('credit-card-fields');
-    const cardNum = document.getElementById('card-number');
-    const cardExpiry = document.getElementById('card-expiry');
-    const cardCvc = document.getElementById('card-cvc');
-    
     updatePaymentSelectionUI();
-
-    if (method === 'credit-card') {
-        fields.classList.remove('hidden');
-        cardNum.setAttribute('required', 'true');
-        cardExpiry.setAttribute('required', 'true');
-        cardCvc.setAttribute('required', 'true');
-    } else {
-        fields.classList.add('hidden');
-        cardNum.removeAttribute('required');
-        cardExpiry.removeAttribute('required');
-        cardCvc.removeAttribute('required');
-    }
-};
-
-window.formatCardNumber = function(input) {
-    let value = input.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    let matches = value.match(/\d{4,16}/g);
-    let match = matches && matches[0] || '';
-    let parts = [];
-
-    for (let i = 0, len = match.length; i < len; i += 4) {
-        parts.push(match.substring(i, i + 4));
-    }
-
-    if (parts.length > 0) {
-        input.value = parts.join(' ');
-    } else {
-        input.value = value;
-    }
-};
-
-window.formatCardExpiry = function(input) {
-    let value = input.value.replace(/\D/g, '');
-    if (value.length >= 2) {
-        input.value = value.slice(0, 2) + '/' + value.slice(2, 4);
-    } else {
-        input.value = value;
-    }
 };
 
 // --- 7. 注文予約送信ハンドリング ---
-window.handleOrderSubmit = function(event) {
+// 【超重要改善】クレジットカード決済が選ばれたときに、自社サーバー（server.js）の
+// `/create-checkout-session` APIへ接続し、安全なStripe公式の決済画面へリダイレクトさせます！
+window.handleOrderSubmit = async function(event) {
     event.preventDefault();
 
     const name = document.getElementById('user-name').value;
     const time = document.getElementById('pickup-time').value;
     const paymentMethodRadio = document.querySelector('input[name="payment-method"]:checked');
     const paymentMethod = paymentMethodRadio ? paymentMethodRadio.value : 'pay-at-store';
-    
+
+    // 1. クレジットカード決済が選ばれた場合の「Stripe Checkout」連携処理
+    if (paymentMethod === 'credit-card') {
+        // ボタンをローディング状態にして二重送信を防ぐ
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span>決済画面へ移動中...</span>`;
+
+        try {
+            // カート情報をサーバーへ送信
+            const response = await fetch('http://localhost:3000/create-checkout-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    cartItems: cart.map(item => ({
+                        product: {
+                            id: item.product.id,
+                            name: item.product.name,
+                            price: item.product.price
+                        },
+                        quantity: item.quantity
+                    })),
+                    userName: name,
+                    pickupTime: time
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || '決済セッションの作成に失敗しました。');
+            }
+
+            const data = await response.json();
+            
+            // サーバーから返ってきた「Stripe決済ページのURL」へ直接ジャンプ！
+            if (data.url) {
+                window.location.href = data.url;
+                return; // ここで処理を終了（Stripe画面へ遷移するため）
+            } else {
+                throw new Error('決済URLが取得できませんでした。');
+            }
+
+        } catch (error) {
+            console.error('Stripeエラー:', error);
+            alert('決済エラーが発生しました: ' + error.message);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+            return;
+        }
+    }
+
+    // 2. 「店頭でお支払い」の場合の従来の処理（Stripeを通さない）
     const receiptId = 'NST-' + Math.floor(10000 + Math.random() * 90000);
 
     document.getElementById('receipt-id').innerText = receiptId;
@@ -362,15 +375,9 @@ window.handleOrderSubmit = function(event) {
     const paymentMethodText = document.getElementById('receipt-payment-method');
     const instructionText = document.getElementById('receipt-instruction');
 
-    if (paymentMethod === 'credit-card') {
-        paymentMethodText.innerText = 'クレジットカード決済完了';
-        paymentMethodText.className = 'font-bold text-green-600';
-        instructionText.innerText = '※WEB上でのクレジットカード決済が完了しています。お時間になりましたら店舗カウンターにお越しいただき、店員に注文予約番号をお見せの上、お品物をお受け取りください。';
-    } else {
-        paymentMethodText.innerText = '店頭でお支払い';
-        paymentMethodText.className = 'font-bold text-gray-800';
-        instructionText.innerText = '※お支払いは店舗受け取り時（現金/クレジットカード/各種QR決済）となります。お時間になりましたらカウンターまでお越しいただき、上記の予約番号をご提示ください。';
-    }
+    paymentMethodText.innerText = '店頭でお支払い';
+    paymentMethodText.className = 'font-bold text-gray-800';
+    instructionText.innerText = '※お支払いは店舗受け取り時（現金/クレジットカード/各種QR決済）となります。お時間になりましたらカウンターまでお越しいただき、上記の予約番号をご提示ください。';
 
     toggleCart(false);
 
