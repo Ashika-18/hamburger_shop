@@ -1,170 +1,92 @@
-const path = require('path');
-
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
-
-// ローカル開発（Windows SSL 検査）向け。Render 本番では使わない
-if (process.env.STRIPE_DEV_INSECURE === 'true' && !process.env.RENDER) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
 }
 
-const https = require('https');
-const tls = require('tls');
+// 最上部で環境変数（.env）を確実に読み込みます
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 
-const projectRoot = path.resolve(__dirname, '..');
-const stripeSecretKey = (process.env.STRIPE_SECRET_KEY || '').trim();
+// =========================================================================
+// 🔒 【安全ガード】Stripe秘密鍵の自動検証と空白クリーニング処理
+// =========================================================================
+let stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
-if (!stripeSecretKey || !stripeSecretKey.startsWith('sk_')) {
-    console.error('❌ STRIPE_SECRET_KEY が未設定または形式が不正です。');
-    if (process.env.RENDER) {
-        console.error('   Render → Environment で以下を設定してください:');
-        console.error('   STRIPE_SECRET_KEY = sk_test_...（Stripe ダッシュボードからコピー）');
-        console.error('   CLIENT_URL = https://hamburger-shop.onrender.com');
-    } else {
-        console.error('   .env に STRIPE_SECRET_KEY=sk_test_... を設定してください。');
-    }
-    process.exit(1);
+if (!stripeSecretKey) {
+    console.error('❌ [ERROR] STRIPE_SECRET_KEY が環境変数に設定されていません！');
+    console.error('Renderの「Environment」設定画面で正しくキーが登録されているか確認してください。');
+} else {
+    // 前後にスペースや改行が混じっていても自動で100%綺麗に消去（トリム）します
+    stripeSecretKey = stripeSecretKey.trim();
+    console.log('🔑 [INFO] Stripe秘密鍵を正常に検出しました。(自動クリーニング済)');
 }
 
-function getMergedCaCertificates() {
-    const seen = new Set();
-    const merged = [];
-    const add = (certs) => {
-        for (const cert of certs || []) {
-            if (!seen.has(cert)) {
-                seen.add(cert);
-                merged.push(cert);
-            }
-        }
-    };
-    add(tls.rootCertificates);
-    if (typeof tls.getCACertificates === 'function') {
-        add(tls.getCACertificates('system'));
-        add(tls.getCACertificates('default'));
-    }
-    return merged;
-}
-
-function createStripeHttpAgent() {
-    const ca = getMergedCaCertificates();
-    return new https.Agent({
-        ca: ca.length > 0 ? ca : undefined,
-        minVersion: 'TLSv1.2',
-        keepAlive: true,
-    });
-}
-
+// 通信タイムアウト時間を適切に制限（60秒）し、接続エラーを防止する設定を追加
 const stripe = require('stripe')(stripeSecretKey, {
-    httpAgent: createStripeHttpAgent(),
-    maxNetworkRetries: 2,
+    timeout: 60000 // 60秒
 });
-
-function stripeErrorMessage(error) {
-    if (error.type === 'StripeAuthenticationError') {
-        return 'Stripe APIキーが無効です。環境変数 STRIPE_SECRET_KEY を確認してください。';
-    }
-    if (
-        error.type === 'StripeConnectionError' ||
-        error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
-        /connection to Stripe/i.test(error.message || '')
-    ) {
-        return 'Stripeへの接続に失敗しました。ネットワークと API キーを確認してください。';
-    }
-    return error.message;
-}
-
-const CLIENT_URL = (process.env.CLIENT_URL || 'http://127.0.0.1:5500').replace(/\/$/, '');
-
-async function verifyStripeConnection() {
-    try {
-        await stripe.balance.retrieve();
-        await stripe.checkout.sessions.create({
-            payment_method_types: ['card'],
-            line_items: [{
-                price_data: {
-                    currency: 'jpy',
-                    product_data: { name: '接続テスト' },
-                    unit_amount: 100,
-                },
-                quantity: 1,
-            }],
-            mode: 'payment',
-            success_url: `${CLIENT_URL}/index.html?success=true`,
-            cancel_url: `${CLIENT_URL}/index.html?cancel=true`,
-        });
-        console.log('✅ Stripe API 接続 OK（残高・Checkout 両方）');
-        console.log(`   CLIENT_URL: ${CLIENT_URL}`);
-    } catch (error) {
-        console.error('❌ Stripe 接続エラー:', stripeErrorMessage(error));
-        console.error('   詳細:', error.type, error.message);
-        process.exit(1);
-    }
-}
 
 const app = express();
 
-app.use(cors({ origin: '*' }));
+// フロントエンド（ブラウザ）からのアクセスをすべて許可
+app.use(cors({
+    origin: '*'
+}));
 app.use(express.json());
 
-app.use((req, res, next) => {
-    if (req.method === 'POST' && req.path === '/create-checkout-session') {
-        console.log(`[${new Date().toLocaleTimeString()}] 決済リクエスト受信（商品数: ${req.body?.cartItems?.length ?? 0}）`);
-    }
-    next();
-});
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5500';
 
-app.get('/health', (req, res) => {
-    res.json({ ok: true });
-});
-
+// Stripe Checkout セッションを作成するAPI
 app.post('/create-checkout-session', async (req, res) => {
     try {
         const { cartItems, userName, pickupTime } = req.body;
+
+        // APIキーが正常に読み込めていない場合の安全ガード
+        if (!stripeSecretKey) {
+            return res.status(500).json({ 
+                error: 'サーバー側でStripeのAPIキー（秘密鍵）が設定されていません。Renderの設定を確認してください。' 
+            });
+        }
 
         if (!cartItems || cartItems.length === 0) {
             return res.status(400).json({ error: 'カートが空です。' });
         }
 
-        const lineItems = cartItems.map((item) => ({
-            price_data: {
-                currency: 'jpy',
-                product_data: { name: item.product.name },
-                unit_amount: Math.round(Number(item.product.price)),
-            },
-            quantity: item.quantity,
-        }));
+        const lineItems = cartItems.map(item => {
+            return {
+                price_data: {
+                    currency: 'jpy',
+                    product_data: {
+                        name: item.product.name,
+                    },
+                    unit_amount: item.product.price,
+                },
+                quantity: item.quantity,
+            };
+        });
 
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: lineItems,
             mode: 'payment',
-            success_url: `${CLIENT_URL}/index.html?success=true&name=${encodeURIComponent(userName || '')}&time=${encodeURIComponent(pickupTime || '')}`,
+            success_url: `${CLIENT_URL}/index.html?success=true&name=${encodeURIComponent(userName)}&time=${encodeURIComponent(pickupTime)}`,
             cancel_url: `${CLIENT_URL}/index.html?cancel=true`,
         });
 
-        console.log(`[${new Date().toLocaleTimeString()}] Checkout セッション作成 OK`);
         res.json({ url: session.url });
+
     } catch (error) {
-        console.error('❌ Checkout Session 作成失敗:', error.type, error.message);
-        res.status(500).json({
-            error: 'Stripe決済の準備中にエラーが発生しました: ' + stripeErrorMessage(error),
-        });
+        console.error('❌ Checkout Session作成失敗:', error.message);
+        res.status(500).json({ error: 'Stripe決済の準備中にエラーが発生しました: ' + error.message });
     }
 });
 
-// Render 等: 静的ファイル（index.html / main.js / style.css）も同じサーバーから配信
-app.get('/', (req, res) => {
-    res.sendFile(path.join(projectRoot, 'index.html'));
-});
-app.use(express.static(projectRoot, { index: 'index.html' }));
-
 const PORT = process.env.PORT || 3000;
-verifyStripeConnection().then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log('==================================================');
-        console.log(' NEST BURGER CRAFT - Stripe Checkout サーバー起動！');
-        console.log(` ポート: ${PORT}`);
-        console.log('==================================================');
-    });
+app.listen(PORT, '0.0.0.0', () => {
+    console.log('==================================================');
+    console.log(' NEST BURGER CRAFT - Stripe Checkout サーバー起動！');
+    console.log(` APIポート: http://localhost:${PORT}`);
+    console.log('==================================================');
 });
