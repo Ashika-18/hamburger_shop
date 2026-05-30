@@ -25,10 +25,15 @@ if (!stripeSecretKey) {
 } else {
     stripeSecretKey = stripeSecretKey.trim();
     console.log('🔑 [INFO] Stripe秘密鍵を正常に検出しました。(自動クリーニング済)');
+    // 開発用にAPIキーの最初と最後だけを安全にログ出力し、正しくセットされているか目視可能にします
+    const maskedKey = stripeSecretKey.substring(0, 15) + '...' + stripeSecretKey.substring(stripeSecretKey.length - 8);
+    console.log(`📂 [DEBUG] 現在ロードされているAPIキーの形式: [${maskedKey}] (総文字数: ${stripeSecretKey.length}文字)`);
 }
 
+// 【1回目の精査：Stripeの最大タイムアウトを「8秒」に極限短縮】
+// Renderの30秒タイムアウトに引っかかるのを防ぐため、Stripeの通信制限を8秒に固定します。
 const stripe = require('stripe')(stripeSecretKey, {
-    timeout: 60000 // 60秒
+    timeout: 8000 // 8秒で強制クローズ
 });
 
 const app = express();
@@ -41,22 +46,32 @@ app.use(express.json());
 // =========================================================================
 // 📁 【超堅牢パス解決】フロントエンド画面の配信制御
 // =========================================================================
-// server.js は javascripts フォルダ内にあるため、確実に1つ上のルートフォルダを絶対パスで指定します。
 const publicPath = path.resolve(__dirname, '..');
-
-// 読み込み先パスをRenderのログに出力して、ズレがないか監視できるようにします
 console.log(`📂 [DEBUG] フロントエンド画面の配信ルートフォルダパス: ${publicPath}`);
 
 app.use(express.static(publicPath));
 
 // Stripe Checkout セッションを動的に作成するAPI（バックエンド処理）
 app.post('/create-checkout-session', async (req, res, next) => {
+    // 【2回目の精査：API処理全体の12秒強制タイムアウト監視】
+    // 万が一Stripe以外の要因で処理がハングアップした場合に備え、12秒で強制遮断するセーフティタイマーを設定します。
+    const apiTimeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('STRIPE_CONNECT_TIMEOUT')), 12000)
+    );
+
     try {
         const { cartItems, userName, pickupTime } = req.body;
 
         if (!stripeSecretKey) {
             return res.status(500).json({ 
-                error: 'サーバー側でStripeのAPIキー（秘密鍵）が設定されていません。' 
+                error: 'サーバー側でStripeのAPIキー（秘密鍵）が設定されていません。Renderの「Environment」設定を確認してください。' 
+            });
+        }
+
+        // 送信前にAPIキーの最低限のフォーマット検証（打ち間違い、コピペミス対策）
+        if (!stripeSecretKey.startsWith('sk_test_') && !stripeSecretKey.startsWith('sk_live_')) {
+            return res.status(400).json({
+                error: '設定されているStripe秘密鍵の形式が不正です。鍵は「sk_test_」または「sk_live_」から始まる必要があります。'
             });
         }
 
@@ -77,43 +92,42 @@ app.post('/create-checkout-session', async (req, res, next) => {
             };
         });
 
-        // リクエスト元のドメインを動的に解決
         const referer = req.headers.referer || 'http://localhost:3000/';
         const redirectBase = referer.split('?')[0];
 
-        // Stripe APIとダイナミックに通信して決済セッションを生成
-        const session = await stripe.checkout.sessions.create({
-            payment_method_types: ['card'],
-            line_items: lineItems,
-            mode: 'payment',
-            success_url: `${redirectBase}?success=true&name=${encodeURIComponent(userName)}&time=${encodeURIComponent(pickupTime)}`,
-            cancel_url: `${redirectBase}?cancel=true`,
-        });
+        // 実際のStripe通信処理を、タイムアウト監視（apiTimeout）と競争（race）させます！
+        const session = await Promise.race([
+            stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: lineItems,
+                mode: 'payment',
+                success_url: `${redirectBase}?success=true&name=${encodeURIComponent(userName)}&time=${encodeURIComponent(pickupTime)}`,
+                cancel_url: `${redirectBase}?cancel=true`,
+            }),
+            apiTimeout
+        ]);
 
         res.json({ url: session.url });
 
     } catch (error) {
-        // エラーハンドラーミドルウェアにエラーを安全に引き渡します
+        // タイムアウトを検知した場合、わかりやすいエラーオブジェクトに変換してハンドラーに流します
+        if (error.message === 'STRIPE_CONNECT_TIMEOUT') {
+            return next(new Error('Stripeサーバーとの通信が規定時間（12秒）以内に完了しませんでした。ネットワーク環境またはAPI秘密鍵の有効性を確認してください。'));
+        }
         next(error);
     }
 });
 
 // =========================================================================
 // 🌐 【Cannot GET / 回避＆将来の互換性対策ミドルウェア】
-// ルーティングエンジン（path-to-regexp）を介さない安全なフォールバック処理。
-// これにより、Expressのどのバージョンでも絶対にクラッシュせずに
-// 画面リソースの紐付けを行います。
 // =========================================================================
 app.use((req, res, next) => {
-    // GETリクエストであり、かつ決済API（/create-checkout-session）以外のアクセスはすべて
-    // 自動的にフロントエンド画面（index.html）へ安全に流し込みます。
     if (req.method === 'GET' && !req.path.startsWith('/create-checkout-session')) {
         const indexPath = path.join(publicPath, 'index.html');
-        console.log(`📄 [DEBUG] フロントエンド画面を出力します (${indexPath})`);
         return res.sendFile(indexPath, (err) => {
             if (err) {
                 console.error('❌ [ERROR] フロントエンド画面の送信に失敗しました:', err.message);
-                res.status(404).send('ハンバーガーショップ画面が見つかりません。フォルダ構成を確認してください。');
+                res.status(404).send('ハンバーガーショップ画面が見つかりません。');
             }
         });
     }
@@ -122,17 +136,14 @@ app.use((req, res, next) => {
 
 // =========================================================================
 // 🚨 【超重要：グローバル・JSONエラーハンドラーミドルウェア】
-// システムのあらゆるエラー（Stripe通信失敗など）をここで強制的にキャッチし、
-// ブラウザが解釈できる「綺麗なJSON形式」でエラー応答を100%返します。
-// これにより「Unexpected token <」エラーの発生を完全に防止します！
+// 【3回目の精査：Renderの30秒リミットより前に、必ず自前で綺麗なJSONエラーを返却】
 // =========================================================================
 app.use((err, req, res, next) => {
     console.error('❌ [FATAL ERROR] サーバー内部で例外が発生しました:', err.stack || err.message);
     
-    // レスポンスのヘッダーをJSONに固定し、500エラーコードでJSONを返却します
     res.setHeader('Content-Type', 'application/json');
     res.status(500).json({
-        error: 'Stripe決済の処理中にエラーが発生しました。',
+        error: '決済の準備中にエラーが発生しました。',
         details: err.message || '内部サーバーエラー'
     });
 });
