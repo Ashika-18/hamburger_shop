@@ -1,7 +1,10 @@
 // グローバルの多重読み込み防止フラグ
 window.NEST_APP_LOADED = true;
 
-// --- 1. 商品マスターデータ ---
+// バックエンド API（Live Server のホスト名に合わせる）
+const API_BASE = `http://${window.location.hostname}:3000`;
+
+// --- 商品マスターデータ ---
 const products = [
     {
         id: 'b1',
@@ -9,7 +12,7 @@ const products = [
         englishName: 'Nest Craft Burger',
         price: 1280,
         category: 'burger',
-        description: '当店特製。つなぎ不使用の国産牛100%の極厚パティと、濃厚なオリジナルBBQクラフトソースの極上マリアージュ。',
+        description: '当店特製。つなぎ不使用の国産牛100%の極厚パティと、濃厚なオリジナルBBQクラフトソース of 極上マリアージュ。',
         image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80',
         badge: '人気No.1'
     },
@@ -283,26 +286,91 @@ window.updatePaymentSelectionUI = function() {
     const creditLabel = document.getElementById('payment-credit-label');
     if(!storeLabel || !creditLabel) return;
 
-    const storeRadio = storeLabel.querySelector('input');
+    const storeRadio = storeLabel.querySelector('input') || document.querySelector('input[value="pay-at-store"]');
+    const creditRadio = creditLabel.querySelector('input') || document.querySelector('input[value="credit-card"]');
 
-    if (storeRadio.checked) {
-        storeLabel.className = "relative flex flex-col p-3 border-2 border-nestGold rounded-xl cursor-pointer text-center bg-nestGold/5 text-nestDark font-bold";
-        creditLabel.className = "relative flex flex-col p-3 border border-gray-200 rounded-xl cursor-pointer text-center hover:border-nestGold bg-white text-gray-500";
+    const isStoreChecked = storeRadio ? storeRadio.checked : true;
+
+    if (isStoreChecked) {
+        storeLabel.className = "relative flex flex-col p-3 border-2 border-nestGold rounded-xl cursor-pointer text-center bg-nestGold/5 text-nestDark font-bold w-full transition-all";
+        creditLabel.className = "relative flex flex-col p-3 border border-gray-200 rounded-xl cursor-pointer text-center hover:border-nestGold bg-white text-gray-500 w-full transition-all opacity-60";
     } else {
-        creditLabel.className = "relative flex flex-col p-3 border-2 border-nestGold rounded-xl cursor-pointer text-center bg-nestGold/5 text-nestDark font-bold";
-        storeLabel.className = "relative flex flex-col p-3 border border-gray-200 rounded-xl cursor-pointer text-center hover:border-nestGold bg-white text-gray-500";
+        creditLabel.className = "relative flex flex-col p-3 border-2 border-nestGold rounded-xl cursor-pointer text-center bg-nestGold/5 text-nestDark font-bold w-full transition-all";
+        storeLabel.className = "relative flex flex-col p-3 border border-gray-200 rounded-xl cursor-pointer text-center hover:border-nestGold bg-white text-gray-500 w-full transition-all opacity-60";
     }
 };
 
-// 【改善】Stripe Checkout（リダイレクト方式）を実装するため、自前のカード入力項目は不要になります。
-// ここではエラーを防ぐために関数だけ残しておきます。
+// 【超重要復活】HTMLにもともと備わっているカード情報入力欄（カード番号、有効期限、CVC）を破壊せずにそのまま残し表示させます！
 window.togglePaymentFields = function(method) {
+    const fields = document.getElementById('credit-card-fields');
+    if (!fields) return;
+
     updatePaymentSelectionUI();
+
+    if (method === 'credit-card') {
+        // 非表示（hidden）を解除して入力フォームをそのまま100%きれいに復活表示させます！
+        fields.classList.remove('hidden');
+
+        // もしすでに案内板が挿入されていたら、元のカード情報入力HTML構造を再構築して完全に表示させます
+        if (!document.getElementById('card-number')) {
+            fields.innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 block mb-1">カード番号</label>
+                        <input type="text" id="card-number" placeholder="4242 4242 4242 4242" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-nestGold outline-none font-medium" maxlength="19" required oninput="formatCardNumber(this)">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 block mb-1">有効期限 (月/年)</label>
+                            <input type="text" id="card-expiry" placeholder="MM/YY" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-nestGold outline-none font-medium text-center" maxlength="5" required oninput="formatCardExpiry(this)">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 block mb-1">セキュリティコード</label>
+                            <input type="password" id="card-cvc" placeholder="CVC" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-nestGold outline-none font-medium text-center" maxlength="3" required>
+                        </div>
+                    </div>
+                    <div style="background-color: rgba(219, 234, 254, 0.4);" class="p-3 border border-blue-200 rounded-lg text-[11px] text-blue-900 leading-relaxed flex gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0-6v2m0-8H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-5z" />
+                        </svg>
+                        <span>「予約を確定する」を押すと Stripe の決済ページへ移動します。カード番号はそちらで入力してください（この欄は表示用です）。</span>
+                    </div>
+                </div>
+            `;
+        }
+    } else {
+        fields.classList.add('hidden');
+    }
+};
+
+// --- カードの入力補助フォーマッター機能 ---
+window.formatCardNumber = function(input) {
+    let value = input.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    let matches = value.match(/\d{4,16}/g);
+    let match = matches && matches[0] || '';
+    let parts = [];
+
+    for (let i = 0, len = match.length; i < len; i += 4) {
+        parts.push(match.substring(i, i + 4));
+    }
+
+    if (parts.length > 0) {
+        input.value = parts.join(' ');
+    } else {
+        input.value = value;
+    }
+};
+
+window.formatCardExpiry = function(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length >= 2) {
+        input.value = value.slice(0, 2) + '/' + value.slice(2, 4);
+    } else {
+        input.value = value;
+    }
 };
 
 // --- 7. 注文予約送信ハンドリング ---
-// 【超重要改善】クレジットカード決済が選ばれたときに、自社サーバー（server.js）の
-// `/create-checkout-session` APIへ接続し、安全なStripe公式の決済画面へリダイレクトさせます！
 window.handleOrderSubmit = async function(event) {
     event.preventDefault();
 
@@ -313,15 +381,18 @@ window.handleOrderSubmit = async function(event) {
 
     // 1. クレジットカード決済が選ばれた場合の「Stripe Checkout」連携処理
     if (paymentMethod === 'credit-card') {
-        // ボタンをローディング状態にして二重送信を防ぐ
         const submitBtn = event.target.querySelector('button[type="submit"]');
         const originalBtnText = submitBtn.innerHTML;
         submitBtn.disabled = true;
-        submitBtn.innerHTML = `<span>決済画面へ移動中...</span>`;
+        submitBtn.innerHTML = `<span>決済処理中...</span>`;
 
         try {
-            // カート情報をサーバーへ送信
-            const response = await fetch('http://localhost:3000/create-checkout-session', {
+            const healthCheck = await fetch(`${API_BASE}/health`);
+            if (!healthCheck.ok) {
+                throw new Error('決済サーバーに接続できません。ターミナルで「node javascripts/server.js」を起動してください。');
+            }
+
+            const response = await fetch(`${API_BASE}/create-checkout-session`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -331,6 +402,8 @@ window.handleOrderSubmit = async function(event) {
                         product: {
                             id: item.product.id,
                             name: item.product.name,
+                            description: item.product.description,
+                            image: item.product.image,
                             price: item.product.price
                         },
                         quantity: item.quantity
@@ -350,7 +423,7 @@ window.handleOrderSubmit = async function(event) {
             // サーバーから返ってきた「Stripe決済ページのURL」へ直接ジャンプ！
             if (data.url) {
                 window.location.href = data.url;
-                return; // ここで処理を終了（Stripe画面へ遷移するため）
+                return;
             } else {
                 throw new Error('決済URLが取得できませんでした。');
             }
@@ -409,7 +482,45 @@ window.closeSuccessModal = function() {
 
 // --- 8. 初期化処理 ---
 window.addEventListener('DOMContentLoaded', () => {
+    const storeLabel = document.getElementById('payment-payatstore-label');
+    const creditLabel = document.getElementById('payment-credit-label');
+
+    // 1. ラジオボタン自体にかけられた無効化属性（disabled）をJavaScriptから強制的に解除・破壊します
+    const radios = document.querySelectorAll('input[name="payment-method"]');
+    radios.forEach(radio => {
+        radio.removeAttribute('disabled');
+        radio.disabled = false;
+
+        radio.addEventListener('change', () => {
+            updatePaymentSelectionUI();
+            togglePaymentFields(radio.value);
+        });
+    });
+
+    // 2. ボタン枠（ラベル）自体のどこをクリックしても、確実にラジオボタンがチェックされるようにクリックイベントを注入
+    const setupLabelClick = (label, value) => {
+        if (!label) return;
+        label.style.cursor = 'pointer';
+        
+        label.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'INPUT') {
+                const radio = label.querySelector('input') || document.querySelector(`input[value="${value}"]`);
+                if (radio && !radio.disabled) {
+                    radio.checked = true;
+                    radio.dispatchEvent(new Event('change'));
+                }
+            }
+        });
+    };
+
+    setupLabelClick(storeLabel, 'pay-at-store');
+    setupLabelClick(creditLabel, 'credit-card');
+
+    // 3. 画面の読み込み時の初期表示設定
     updatePaymentSelectionUI();
     renderProducts();
     updateCart();
+    
+    // 最初は「店頭払い」を標準としてカードフィールドを非表示にしておく
+    togglePaymentFields('pay-at-store');
 });
