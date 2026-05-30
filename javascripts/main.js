@@ -396,7 +396,7 @@ window.handleOrderSubmit = async function(event) {
                 throw new Error('決済サーバーに接続できません。ターミナルで「node javascripts/server.js」を起動してください。');
             }
 
-            const response = await fetch(`${API_BASE}/create-checkout-session`, {
+            const response = await fetch(`${API_BASE}create-checkout-session`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
