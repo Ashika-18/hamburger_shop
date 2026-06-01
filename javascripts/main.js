@@ -5,7 +5,7 @@ window.NEST_APP_LOADED = true;
 // ローカル: Live Server(5500) + node server.js(3000) / Render: 同一オリジン
 const isLocalLiveServer = ['5500', '5501'].includes(window.location.port);
 const API_BASE = isLocalLiveServer
-    ? `http://${window.location.hostname}:3000`
+    ? `http://${window.location.hostname}:3000/`
     : 'https://hamburger-shop.onrender.com/';
 
 // --- 商品マスターデータ ---
@@ -285,14 +285,14 @@ window.updateCart = function() {
 };
 
 // --- 6. お支払い方法関連の処理 ---
+let stripeCheckoutInProgress = false;
+
 window.updatePaymentSelectionUI = function() {
     const storeLabel = document.getElementById('payment-payatstore-label');
     const creditLabel = document.getElementById('payment-credit-label');
     if(!storeLabel || !creditLabel) return;
 
     const storeRadio = storeLabel.querySelector('input') || document.querySelector('input[value="pay-at-store"]');
-    const creditRadio = creditLabel.querySelector('input') || document.querySelector('input[value="credit-card"]');
-
     const isStoreChecked = storeRadio ? storeRadio.checked : true;
 
     if (isStoreChecked) {
@@ -304,74 +304,123 @@ window.updatePaymentSelectionUI = function() {
     }
 };
 
-// 【超重要復活】HTMLにもともと備わっているカード情報入力欄（カード番号、有効期限、CVC）を破壊せずにそのまま残し表示させます！
-window.togglePaymentFields = function(method) {
-    const fields = document.getElementById('credit-card-fields');
-    if (!fields) return;
+window.setOrderFieldsRequired = function(required) {
+    ['user-name', 'user-phone', 'pickup-time'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (required) {
+                el.setAttribute('required', '');
+            } else {
+                el.removeAttribute('required');
+            }
+        }
+    });
+};
 
+window.togglePaymentFields = function(method) {
     updatePaymentSelectionUI();
 
+    const hint = document.getElementById('credit-card-hint');
+    const orderFields = document.getElementById('order-contact-fields');
+    const submitBtn = document.querySelector('#order-form button[type="submit"]');
+
     if (method === 'credit-card') {
-        // 非表示（hidden）を解除して入力フォームをそのまま100%きれいに復活表示させます！
-        fields.classList.remove('hidden');
+        setOrderFieldsRequired(false);
+        if (hint) hint.classList.remove('hidden');
+        if (orderFields) orderFields.classList.add('hidden');
+        if (submitBtn) submitBtn.classList.add('hidden');
+    } else {
+        setOrderFieldsRequired(true);
+        if (hint) hint.classList.add('hidden');
+        if (orderFields) orderFields.classList.remove('hidden');
+        if (submitBtn) submitBtn.classList.remove('hidden');
+    }
+};
 
-        // もしすでに案内板が挿入されていたら、元のカード情報入力HTML構造を再構築して完全に表示させます
-        if (!document.getElementById('card-number')) {
-            fields.innerHTML = `
-                <div class="space-y-4">
-                    <div>
-                        <label class="text-xs font-bold text-gray-500 block mb-1">カード番号</label>
-                        <input type="text" id="card-number" placeholder="4242 4242 4242 4242" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-nestGold outline-none font-medium" maxlength="19" required oninput="formatCardNumber(this)">
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-xs font-bold text-gray-500 block mb-1">有効期限 (月/年)</label>
-                            <input type="text" id="card-expiry" placeholder="MM/YY" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-nestGold outline-none font-medium text-center" maxlength="5" required oninput="formatCardExpiry(this)">
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-gray-500 block mb-1">セキュリティコード</label>
-                            <input type="password" id="card-cvc" placeholder="CVC" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-nestGold outline-none font-medium text-center" maxlength="3" required>
-                        </div>
-                    </div>
-                    <div style="background-color: rgba(219, 234, 254, 0.4);" class="p-3 border border-blue-200 rounded-lg text-[11px] text-blue-900 leading-relaxed flex gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0-6v2m0-8H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-5z" />
-                        </svg>
-                        <span>「予約を確定する」を押すと Stripe の決済ページへ移動します。カード番号はそちらで入力してください（この欄は表示用です）。</span>
-                    </div>
-                </div>
-            `;
+window.startStripeCheckout = async function() {
+    if (stripeCheckoutInProgress) return false;
+
+    if (!cart.length) {
+        alert('カートに商品を追加してから、カード決済を選択してください。');
+        const storeRadio = document.querySelector('input[value="pay-at-store"]');
+        if (storeRadio) {
+            storeRadio.checked = true;
+            togglePaymentFields('pay-at-store');
         }
-    } else {
-        fields.classList.add('hidden');
+        return false;
+    }
+
+    stripeCheckoutInProgress = true;
+    const creditLabel = document.getElementById('payment-credit-label');
+    const subtitle = creditLabel ? creditLabel.querySelectorAll('span')[1] : null;
+    const originalSubtitle = subtitle ? subtitle.textContent : '';
+
+    if (creditLabel) {
+        creditLabel.classList.add('opacity-70', 'pointer-events-none');
+        if (subtitle) subtitle.textContent = '決済ページへ移動中...';
+    }
+
+    const nameEl = document.getElementById('user-name');
+    const timeEl = document.getElementById('pickup-time');
+    const name = nameEl ? nameEl.value.trim() : '';
+    const time = timeEl ? timeEl.value : '';
+
+    try {
+        const healthCheck = await fetch(`${API_BASE}/health`);
+        if (!healthCheck.ok) {
+            throw new Error('決済サーバーに接続できません。ターミナルで「node javascripts/server.js」を起動してください。');
+        }
+
+        const response = await fetch(`${API_BASE}create-checkout-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                cartItems: cart.map(item => ({
+                    product: {
+                        id: item.product.id,
+                        name: item.product.name,
+                        description: item.product.description,
+                        image: item.product.image,
+                        price: item.product.price
+                    },
+                    quantity: item.quantity
+                })),
+                userName: name,
+                pickupTime: time
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || '決済セッションの作成に失敗しました。');
+        }
+
+        const data = await response.json();
+        if (data.url) {
+            window.location.href = data.url;
+            return true;
+        }
+        throw new Error('決済URLが取得できませんでした。');
+    } catch (error) {
+        console.error('Stripeエラー:', error);
+        alert('決済エラーが発生しました: ' + error.message);
+        stripeCheckoutInProgress = false;
+        if (creditLabel) {
+            creditLabel.classList.remove('opacity-70', 'pointer-events-none');
+            if (subtitle) subtitle.textContent = originalSubtitle;
+        }
+        const storeRadio = document.querySelector('input[value="pay-at-store"]');
+        if (storeRadio) {
+            storeRadio.checked = true;
+            togglePaymentFields('pay-at-store');
+        }
+        return false;
     }
 };
 
-// --- カードの入力補助フォーマッター機能 ---
-window.formatCardNumber = function(input) {
-    let value = input.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    let matches = value.match(/\d{4,16}/g);
-    let match = matches && matches[0] || '';
-    let parts = [];
-
-    for (let i = 0, len = match.length; i < len; i += 4) {
-        parts.push(match.substring(i, i + 4));
-    }
-
-    if (parts.length > 0) {
-        input.value = parts.join(' ');
-    } else {
-        input.value = value;
-    }
-};
-
-window.formatCardExpiry = function(input) {
-    let value = input.value.replace(/\D/g, '');
-    if (value.length >= 2) {
-        input.value = value.slice(0, 2) + '/' + value.slice(2, 4);
-    } else {
-        input.value = value;
-    }
+window.onCreditCardSelected = function() {
+    togglePaymentFields('credit-card');
+    startStripeCheckout();
 };
 
 // --- 7. 注文予約送信ハンドリング ---
@@ -383,62 +432,10 @@ window.handleOrderSubmit = async function(event) {
     const paymentMethodRadio = document.querySelector('input[name="payment-method"]:checked');
     const paymentMethod = paymentMethodRadio ? paymentMethodRadio.value : 'pay-at-store';
 
-    // 1. クレジットカード決済が選ばれた場合の「Stripe Checkout」連携処理
+    // 1. クレジットカード決済（フォールバック: 送信ボタンからも Stripe へ）
     if (paymentMethod === 'credit-card') {
-        const submitBtn = event.target.querySelector('button[type="submit"]');
-        const originalBtnText = submitBtn.innerHTML;
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = `<span>決済処理中...</span>`;
-
-        try {
-            const healthCheck = await fetch(`${API_BASE}/health`);
-            if (!healthCheck.ok) {
-                throw new Error('決済サーバーに接続できません。ターミナルで「node javascripts/server.js」を起動してください。');
-            }
-
-            const response = await fetch(`${API_BASE}create-checkout-session`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    cartItems: cart.map(item => ({
-                        product: {
-                            id: item.product.id,
-                            name: item.product.name,
-                            description: item.product.description,
-                            image: item.product.image,
-                            price: item.product.price
-                        },
-                        quantity: item.quantity
-                    })),
-                    userName: name,
-                    pickupTime: time
-                })
-            });
-
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.error || '決済セッションの作成に失敗しました。');
-            }
-
-            const data = await response.json();
-            
-            // サーバーから返ってきた「Stripe決済ページのURL」へ直接ジャンプ！
-            if (data.url) {
-                window.location.href = data.url;
-                return;
-            } else {
-                throw new Error('決済URLが取得できませんでした。');
-            }
-
-        } catch (error) {
-            console.error('Stripeエラー:', error);
-            alert('決済エラーが発生しました: ' + error.message);
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalBtnText;
-            return;
-        }
+        await startStripeCheckout();
+        return;
     }
 
     // 2. 「店頭でお支払い」の場合の従来の処理（Stripeを通さない）
@@ -496,35 +493,40 @@ window.addEventListener('DOMContentLoaded', () => {
         radio.disabled = false;
 
         radio.addEventListener('change', () => {
-            updatePaymentSelectionUI();
-            togglePaymentFields(radio.value);
+            if (radio.value === 'credit-card') {
+                onCreditCardSelected();
+            } else {
+                togglePaymentFields('pay-at-store');
+            }
         });
     });
 
     // 2. ボタン枠（ラベル）自体のどこをクリックしても、確実にラジオボタンがチェックされるようにクリックイベントを注入
-    const setupLabelClick = (label, value) => {
+    const setupLabelClick = (label, value, startCheckout) => {
         if (!label) return;
         label.style.cursor = 'pointer';
-        
+
         label.addEventListener('click', (e) => {
             if (e.target.tagName !== 'INPUT') {
                 const radio = label.querySelector('input') || document.querySelector(`input[value="${value}"]`);
                 if (radio && !radio.disabled) {
                     radio.checked = true;
-                    radio.dispatchEvent(new Event('change'));
+                    if (startCheckout) {
+                        onCreditCardSelected();
+                    } else {
+                        radio.dispatchEvent(new Event('change'));
+                    }
                 }
             }
         });
     };
 
-    setupLabelClick(storeLabel, 'pay-at-store');
-    setupLabelClick(creditLabel, 'credit-card');
+    setupLabelClick(storeLabel, 'pay-at-store', false);
+    setupLabelClick(creditLabel, 'credit-card', true);
 
     // 3. 画面の読み込み時の初期表示設定
     updatePaymentSelectionUI();
     renderProducts();
     updateCart();
-    
-    // 最初は「店頭払い」を標準としてカードフィールドを非表示にしておく
     togglePaymentFields('pay-at-store');
 });

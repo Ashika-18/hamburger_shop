@@ -95,15 +95,41 @@ app.post('/create-checkout-session', async (req, res, next) => {
         const referer = req.headers.referer || 'http://localhost:3000/';
         const redirectBase = referer.split('?')[0];
 
+        const pickupTimeOptions = [
+            '11:30', '12:00', '12:30', '13:00', '13:30', '14:00',
+            '17:30', '18:00', '18:30', '19:00', '19:30', '20:00',
+        ].map((time) => ({ label: time, value: time }));
+
+        const sessionParams = {
+            payment_method_types: ['card'],
+            line_items: lineItems,
+            mode: 'payment',
+            locale: 'ja',
+            phone_number_collection: { enabled: true },
+            custom_fields: [
+                {
+                    key: 'customer_name',
+                    label: { type: 'custom', custom: 'お名前' },
+                    type: 'text',
+                },
+                {
+                    key: 'pickup_time',
+                    label: { type: 'custom', custom: 'お受け取り希望時間' },
+                    type: 'dropdown',
+                    dropdown: { options: pickupTimeOptions },
+                },
+            ],
+            success_url: `${redirectBase}?success=true&name=${encodeURIComponent(userName || '')}&time=${encodeURIComponent(pickupTime || '')}`,
+            cancel_url: `${redirectBase}?cancel=true`,
+        };
+
+        if (userName) {
+            sessionParams.metadata = { userName, pickupTime: pickupTime || '' };
+        }
+
         // 実際のStripe通信処理を、タイムアウト監視（apiTimeout）と競争（race）させます！
         const session = await Promise.race([
-            stripe.checkout.sessions.create({
-                payment_method_types: ['card'],
-                line_items: lineItems,
-                mode: 'payment',
-                success_url: `${redirectBase}?success=true&name=${encodeURIComponent(userName)}&time=${encodeURIComponent(pickupTime)}`,
-                cancel_url: `${redirectBase}?cancel=true`,
-            }),
+            stripe.checkout.sessions.create(sessionParams),
             apiTimeout
         ]);
 
