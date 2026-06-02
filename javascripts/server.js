@@ -14,6 +14,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const https = require('https');
 
 // =========================================================================
 // 🔒 【安全ガード】Stripe秘密鍵の自動検証と空白クリーニング処理
@@ -30,11 +31,19 @@ if (!stripeSecretKey) {
     console.log(`📂 [DEBUG] 現在ロードされているAPIキーの形式: [${maskedKey}] (総文字数: ${stripeSecretKey.length}文字)`);
 }
 
-// 【1回目の精査：Stripeの最大タイムアウトを「8秒」に極限短縮】
-// Renderの30秒タイムアウトに引っかかるのを防ぐため、Stripeの通信制限を8秒に固定します。
-const stripe = require('stripe')(stripeSecretKey, {
-    timeout: 8000 // 8秒で強制クローズ
-});
+function createStripeClient(secretKey) {
+    const options = {
+        timeout: 20000,
+        maxNetworkRetries: 2,
+    };
+    if (process.env.STRIPE_DEV_INSECURE === 'true') {
+        options.httpAgent = new https.Agent({ rejectUnauthorized: false });
+        console.warn('⚠️ [WARN] STRIPE_DEV_INSECURE=true — TLS検証を無効化しています（ローカル開発専用）');
+    }
+    return require('stripe')(secretKey, options);
+}
+
+const stripe = stripeSecretKey ? createStripeClient(stripeSecretKey) : null;
 
 const app = express();
 
@@ -51,6 +60,26 @@ console.log(`📂 [DEBUG] フロントエンド画面の配信ルートフォル
 
 app.use(express.static(publicPath));
 
+app.get('/health', (req, res) => {
+    const keyOk = Boolean(
+        stripeSecretKey
+        && (stripeSecretKey.startsWith('sk_test_') || stripeSecretKey.startsWith('sk_live_'))
+    );
+    res.json({
+        ok: true,
+        stripeConfigured: Boolean(stripeSecretKey),
+        stripeKeyFormatValid: keyOk,
+    });
+});
+
+function resolveRedirectBase(req) {
+    const clientUrl = (process.env.CLIENT_URL || '').trim().replace(/\/$/, '');
+    if (clientUrl) return clientUrl;
+    const referer = req.headers.referer || '';
+    if (referer) return referer.split('?')[0];
+    return `http://localhost:${process.env.PORT || 3000}`;
+}
+
 // Stripe Checkout セッションを動的に作成するAPI（バックエンド処理）
 app.post('/create-checkout-session', async (req, res, next) => {
     // 【2回目の精査：API処理全体の12秒強制タイムアウト監視】
@@ -62,7 +91,7 @@ app.post('/create-checkout-session', async (req, res, next) => {
     try {
         const { cartItems, userName, pickupTime } = req.body;
 
-        if (!stripeSecretKey) {
+        if (!stripeSecretKey || !stripe) {
             return res.status(500).json({ 
                 error: 'サーバー側でStripeのAPIキー（秘密鍵）が設定されていません。Renderの「Environment」設定を確認してください。' 
             });
@@ -92,13 +121,13 @@ app.post('/create-checkout-session', async (req, res, next) => {
             };
         });
 
-        const referer = req.headers.referer || 'http://localhost:3000/';
-        const redirectBase = referer.split('?')[0];
+        const redirectBase = resolveRedirectBase(req);
 
+        // Stripe: dropdown の value は英数字のみ（「11:30」は不可 →「1130」）
         const pickupTimeOptions = [
             '11:30', '12:00', '12:30', '13:00', '13:30', '14:00',
             '17:30', '18:00', '18:30', '19:00', '19:30', '20:00',
-        ].map((time) => ({ label: time, value: time }));
+        ].map((time) => ({ label: time, value: time.replace(/\D/g, '') }));
 
         const sessionParams = {
             payment_method_types: ['card'],
@@ -136,9 +165,17 @@ app.post('/create-checkout-session', async (req, res, next) => {
         res.json({ url: session.url });
 
     } catch (error) {
-        // タイムアウトを検知した場合、わかりやすいエラーオブジェクトに変換してハンドラーに流します
         if (error.message === 'STRIPE_CONNECT_TIMEOUT') {
             return next(new Error('Stripeサーバーとの通信が規定時間（12秒）以内に完了しませんでした。ネットワーク環境またはAPI秘密鍵の有効性を確認してください。'));
+        }
+        if (error.type === 'StripeAuthenticationError') {
+            return next(new Error('Stripe APIキーが無効です。ダッシュボードで新しい秘密鍵を発行し、Renderの環境変数を更新してください。'));
+        }
+        if (error.type === 'StripeConnectionError') {
+            return next(new Error('Stripeへの接続に失敗しました。ネットワークまたはAPIキーを確認してください。'));
+        }
+        if (error.type === 'StripeInvalidRequestError') {
+            return next(new Error(error.message || 'Stripeへのリクエストが不正です。'));
         }
         next(error);
     }
@@ -148,7 +185,7 @@ app.post('/create-checkout-session', async (req, res, next) => {
 // 🌐 【Cannot GET / 回避＆将来の互換性対策ミドルウェア】
 // =========================================================================
 app.use((req, res, next) => {
-    if (req.method === 'GET' && !req.path.startsWith('/create-checkout-session')) {
+    if (req.method === 'GET' && req.path !== '/health' && !req.path.startsWith('/create-checkout-session')) {
         const indexPath = path.join(publicPath, 'index.html');
         return res.sendFile(indexPath, (err) => {
             if (err) {

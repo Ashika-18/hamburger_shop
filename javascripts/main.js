@@ -6,7 +6,7 @@ window.NEST_APP_LOADED = true;
 const isLocalLiveServer = ['5500', '5501'].includes(window.location.port);
 const API_BASE = isLocalLiveServer
     ? `http://${window.location.hostname}:3000/`
-    : 'https://hamburger-shop.onrender.com/';
+    : `${window.location.origin}/`;
 
 // --- 商品マスターデータ ---
 const products = [
@@ -366,9 +366,13 @@ window.startStripeCheckout = async function() {
     const time = timeEl ? timeEl.value : '';
 
     try {
-        const healthCheck = await fetch(`${API_BASE}/health`);
+        const healthCheck = await fetch(`${API_BASE}health`);
         if (!healthCheck.ok) {
-            throw new Error('決済サーバーに接続できません。ターミナルで「node javascripts/server.js」を起動してください。');
+            throw new Error('決済サーバーに接続できません。ターミナルで「npm start」を実行してください。');
+        }
+        const health = await healthCheck.json();
+        if (!health.stripeConfigured || !health.stripeKeyFormatValid) {
+            throw new Error('決済サーバーに Stripe APIキーが設定されていません。Render の Environment に STRIPE_SECRET_KEY を登録してください。');
         }
 
         const response = await fetch(`${API_BASE}create-checkout-session`, {
@@ -391,8 +395,14 @@ window.startStripeCheckout = async function() {
         });
 
         if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.error || '決済セッションの作成に失敗しました。');
+            let errData = {};
+            try {
+                errData = await response.json();
+            } catch {
+                throw new Error('決済サーバーから不正な応答が返されました。');
+            }
+            const detail = errData.details ? `（${errData.details}）` : '';
+            throw new Error((errData.error || '決済セッションの作成に失敗しました。') + detail);
         }
 
         const data = await response.json();
